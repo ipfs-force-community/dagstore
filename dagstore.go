@@ -13,8 +13,6 @@ import (
 	carindex "github.com/ipld/go-car/v2/index"
 
 	ds "github.com/ipfs/go-datastore"
-	"github.com/ipfs/go-datastore/namespace"
-	"github.com/ipfs/go-datastore/query"
 	dssync "github.com/ipfs/go-datastore/sync"
 	logging "github.com/ipfs/go-log/v2"
 
@@ -73,8 +71,9 @@ type DAGStore struct {
 	shards  map[shard.Key]*Shard
 	config  Config
 	indices index.FullIndexRepo
-	store   ds.Datastore
-	indexer ShardIndexer
+
+	indexer   ShardIndexer
+	shardRepo ShardRepo
 
 	// TopLevelIndex is the top level (cid -> []shards) index that maps a cid to all the shards that is present in.
 	TopLevelIndex index.Inverted
@@ -152,8 +151,8 @@ type Config struct {
 
 	TopLevelIndex index.Inverted
 
-	// Datastore is the datastore where shard state will be persisted.
-	Datastore ds.Datastore
+	// ShardRepo is the datastore where shard state will be persisted.
+	ShardRepo ShardRepo
 
 	// MountRegistry contains the set of recognized mount types.
 	MountRegistry *mount.Registry
@@ -222,14 +221,11 @@ func NewDAGStore(cfg Config) (*DAGStore, error) {
 		}
 	}
 
-	// handle the datastore.
-	if cfg.Datastore == nil {
-		log.Warnf("no datastore provided; falling back to in-mem datastore; shard state will not survive restarts")
-		cfg.Datastore = dssync.MutexWrap(ds.NewMapDatastore()) // TODO can probably remove mutex wrap, since access is single-threaded
+	if cfg.ShardRepo == nil {
+		log.Warnf("no shard repo provided; falling back to in-mem datastore; shard state will not survive restarts")
+		mutexDS := dssync.MutexWrap(ds.NewMapDatastore()) // TODO can probably remove mutex wrap, since access is single-threaded
+		cfg.ShardRepo = NewShardRepo(mutexDS)
 	}
-
-	// namespace all store operations.
-	cfg.Datastore = namespace.Wrap(cfg.Datastore, StoreNamespace)
 
 	if cfg.MountRegistry == nil {
 		cfg.MountRegistry = mount.NewRegistry()
@@ -242,8 +238,8 @@ func NewDAGStore(cfg Config) (*DAGStore, error) {
 		indices:             cfg.IndexRepo,
 		TopLevelIndex:       cfg.TopLevelIndex,
 		shards:              make(map[shard.Key]*Shard),
-		store:               cfg.Datastore,
 		indexer:             cfg.ShardIndexer,
+		shardRepo:           cfg.ShardRepo,
 		externalCh:          make(chan *task, 128),     // len=128, concurrent external tasks that can be queued up before exercising backpressure.
 		internalCh:          make(chan *task, 1),       // len=1, because eventloop will only ever stage another internal event.
 		completionCh:        make(chan *task, 64),      // len=64, hitting this limit will just make async tasks wait.
@@ -560,7 +556,11 @@ func (d *DAGStore) GC(ctx context.Context) (*GCResult, error) {
 func (d *DAGStore) Close() error {
 	d.cancelFn()
 	d.wg.Wait()
-	_ = d.store.Sync(context.TODO(), ds.Key{})
+	s, ok := d.shardRepo.(ds.Datastore)
+	if ok {
+		_ = s.Sync(context.TODO(), ds.Key{})
+	}
+
 	return nil
 }
 
@@ -574,18 +574,14 @@ func (d *DAGStore) queueTask(tsk *task, ch chan<- *task) error {
 }
 
 func (d *DAGStore) restoreState() error {
-	results, err := d.store.Query(d.ctx, query.Query{})
+	shards, err := d.shardRepo.ListShards(d.ctx)
 	if err != nil {
 		return fmt.Errorf("failed to recover dagstore state from store: %w", err)
 	}
-	for {
-		res, ok := results.NextSync()
-		if !ok {
-			return nil
-		}
+	for _, shard := range shards {
 		s := &Shard{d: d}
-		if err := s.UnmarshalJSON(res.Value); err != nil {
-			log.Warnf("failed to recover state of shard %s: %s; skipping", shard.KeyFromString(res.Key), err)
+		if err := s.fromPersistedShard(shard); err != nil {
+			log.Warnf("failed to recover state of shard %s: %s; skipping", shard.Key, err)
 			continue
 		}
 
@@ -593,6 +589,8 @@ func (d *DAGStore) restoreState() error {
 			"shard lazy", s.lazy)
 		d.shards[s.key] = s
 	}
+
+	return nil
 }
 
 // ensureDir checks whether the specified path is a directory, and if not it
