@@ -17,7 +17,7 @@ func TestShardRepo(t *testing.T) {
 	}
 	ctx := context.Background()
 	store := datastore.NewLogDatastore(dssync.MutexWrap(datastore.NewMapDatastore()), "trace")
-	repo := NewShardRepo(store)
+	repo := NewBadgerShardRepo(store)
 
 	_, ok := repo.(ds.Datastore)
 	assert.True(t, ok)

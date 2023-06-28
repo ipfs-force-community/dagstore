@@ -224,7 +224,7 @@ func NewDAGStore(cfg Config) (*DAGStore, error) {
 	if cfg.ShardRepo == nil {
 		log.Warnf("no shard repo provided; falling back to in-mem datastore; shard state will not survive restarts")
 		mutexDS := dssync.MutexWrap(ds.NewMapDatastore()) // TODO can probably remove mutex wrap, since access is single-threaded
-		cfg.ShardRepo = NewShardRepo(mutexDS)
+		cfg.ShardRepo = NewBadgerShardRepo(mutexDS)
 	}
 
 	if cfg.MountRegistry == nil {

@@ -24,7 +24,7 @@ type ShardRepoImp struct {
 var _ ShardRepo = &ShardRepoImp{}
 var _ ds.Datastore = &ShardRepoImp{}
 
-func NewShardRepo(store ds.Datastore) ShardRepo {
+func NewBadgerShardRepo(store ds.Datastore) ShardRepo {
 	// namespace all store operations.
 	store = namespace.Wrap(store, StoreNamespace)
 	return &ShardRepoImp{Datastore: store}
