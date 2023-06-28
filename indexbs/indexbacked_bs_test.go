@@ -32,10 +32,11 @@ var carv2mnt = &mount.FSMount{FS: testdata.FS, Path: testdata.FSPathCarV2}
 func TestIndexBackedBlockstore(t *testing.T) {
 	ctx := context.Background()
 	store := dssync.MutexWrap(datastore.NewMapDatastore())
+	shardRepo := dagstore.NewBadgerShardRepo(store)
 	dagst, err := dagstore.NewDAGStore(dagstore.Config{
 		MountRegistry: testRegistry(t),
 		TransientsDir: t.TempDir(),
-		Datastore:     store,
+		ShardRepo:     shardRepo,
 	})
 	require.NoError(t, err)
 
@@ -189,10 +190,11 @@ func TestIndexBackedBlockstoreFuzz(t *testing.T) {
 	ctx := context.Background()
 	tempdir := t.TempDir()
 	store := dssync.MutexWrap(datastore.NewMapDatastore())
+	shardRepo := dagstore.NewBadgerShardRepo(store)
 	dagst, err := dagstore.NewDAGStore(dagstore.Config{
 		MountRegistry: testRegistry(t),
 		TransientsDir: t.TempDir(),
-		Datastore:     store,
+		ShardRepo:     shardRepo,
 	})
 	require.NoError(t, err)
 

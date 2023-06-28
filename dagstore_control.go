@@ -3,8 +3,6 @@ package dagstore
 import (
 	"context"
 	"fmt"
-
-	"github.com/ipfs/go-datastore"
 )
 
 type OpType int
@@ -313,11 +311,11 @@ func (d *DAGStore) control() {
 
 		// persist the current shard state. If Op is OpShardDestroy then delete directly from DB.
 		if tsk.op == OpShardDestroy {
-			if err := d.store.Delete(d.ctx, datastore.NewKey(s.key.String())); err != nil {
+			if err := d.shardRepo.DeleteShard(d.ctx, s.key.String()); err != nil {
 				log.Errorw("DestroyShard: failed to delete shard from database", "shard", s.key, "error", err)
 			}
 		} else {
-			if err := s.persist(d.ctx, d.config.Datastore); err != nil { // TODO maybe fail shard?
+			if err := s.persist(d.ctx, d.config.ShardRepo); err != nil { // TODO maybe fail shard?
 				log.Warnw("failed to persist shard", "shard", s.key, "error", err)
 			}
 		}

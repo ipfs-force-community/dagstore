@@ -56,6 +56,28 @@ func (s *Shard) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
+	return s.fromPersistedShard(&ps)
+}
+
+// persist persists the shard's state into the supplied Datastore. It calls
+// MarshalJSON, which requires holding a shard lock to be safe.
+func (s *Shard) persist(ctx context.Context, repo ShardRepo) error {
+	ps, err := s.toPersistedShard()
+	if err != nil {
+		return fmt.Errorf("failed to serialize shard state: %w", err)
+	}
+	if err := repo.SaveShard(ctx, ps); err != nil {
+		return fmt.Errorf("failed to put shard state: %w", err)
+	}
+	if datastore, ok := repo.(ds.Datastore); ok {
+		if err := datastore.Sync(ctx, ds.Key{}); err != nil {
+			return fmt.Errorf("failed to sync shard state to store: %w", err)
+		}
+	}
+	return nil
+}
+
+func (s *Shard) fromPersistedShard(ps *PersistedShard) error {
 	// restore basics.
 	s.key = shard.KeyFromString(ps.Key)
 	s.state = ps.State
@@ -81,20 +103,21 @@ func (s *Shard) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// persist persists the shard's state into the supplied Datastore. It calls
-// MarshalJSON, which requires holding a shard lock to be safe.
-func (s *Shard) persist(ctx context.Context, store ds.Datastore) error {
-	ps, err := s.MarshalJSON()
+func (s *Shard) toPersistedShard() (*PersistedShard, error) {
+	u, err := s.d.mounts.Represent(s.mount)
 	if err != nil {
-		return fmt.Errorf("failed to serialize shard state: %w", err)
+		return nil, fmt.Errorf("failed to encode mount: %w", err)
 	}
-	// assuming that the datastore is namespaced if need be.
-	k := ds.NewKey(s.key.String())
-	if err := store.Put(ctx, k, ps); err != nil {
-		return fmt.Errorf("failed to put shard state: %w", err)
+	ps := &PersistedShard{
+		Key:           s.key.String(),
+		URL:           u.String(),
+		State:         s.state,
+		Lazy:          s.lazy,
+		TransientPath: s.mount.TransientPath(),
 	}
-	if err := store.Sync(ctx, ds.Key{}); err != nil {
-		return fmt.Errorf("failed to sync shard state to store: %w", err)
+	if s.err != nil {
+		ps.Error = s.err.Error()
 	}
-	return nil
+
+	return ps, nil
 }

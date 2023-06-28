@@ -40,11 +40,12 @@ func init() {
 func TestDestroyShard(t *testing.T) {
 	dir := t.TempDir()
 	store := datastore.NewLogDatastore(dssync.MutexWrap(datastore.NewMapDatastore()), "trace")
+	shardRepo := NewBadgerShardRepo(store)
 	sink := tracer(128)
 	dagst, err := NewDAGStore(Config{
 		MountRegistry: testRegistry(t),
 		TransientsDir: dir,
-		Datastore:     store,
+		ShardRepo:     shardRepo,
 		TraceCh:       sink,
 	})
 	require.NoError(t, err)
@@ -99,13 +100,14 @@ func TestDestroyShard(t *testing.T) {
 func TestDestroyAcrossRestart(t *testing.T) {
 	dir := t.TempDir()
 	store := datastore.NewLogDatastore(dssync.MutexWrap(datastore.NewMapDatastore()), "trace")
+	shardRepo := NewBadgerShardRepo(store)
 	idx, err := index.NewFSRepo(t.TempDir())
 	require.NoError(t, err)
 
 	dagst, err := NewDAGStore(Config{
 		MountRegistry: testRegistry(t),
 		TransientsDir: dir,
-		Datastore:     store,
+		ShardRepo:     shardRepo,
 		IndexRepo:     idx,
 	})
 	require.NoError(t, err)
@@ -138,7 +140,7 @@ func TestDestroyAcrossRestart(t *testing.T) {
 	dagst, err = NewDAGStore(Config{
 		MountRegistry: testRegistry(t),
 		TransientsDir: dir,
-		Datastore:     store,
+		ShardRepo:     shardRepo,
 		IndexRepo:     idx,
 	})
 	require.NoError(t, err)
@@ -155,10 +157,11 @@ func TestDestroyAcrossRestart(t *testing.T) {
 
 func TestRegisterUsingExistingTransient(t *testing.T) {
 	ds := datastore.NewMapDatastore()
+	shardRepo := NewBadgerShardRepo(ds)
 	dagst, err := NewDAGStore(Config{
 		MountRegistry: testRegistry(t),
 		TransientsDir: t.TempDir(),
-		Datastore:     ds,
+		ShardRepo:     shardRepo,
 	})
 	require.NoError(t, err)
 
@@ -182,10 +185,11 @@ func TestRegisterUsingExistingTransient(t *testing.T) {
 
 func TestRegisterWithaNilResponseChannel(t *testing.T) {
 	ds := datastore.NewMapDatastore()
+	shardRepo := NewBadgerShardRepo(ds)
 	dagst, err := NewDAGStore(Config{
 		MountRegistry: testRegistry(t),
 		TransientsDir: t.TempDir(),
-		Datastore:     ds,
+		ShardRepo:     shardRepo,
 	})
 	require.NoError(t, err)
 
@@ -217,10 +221,11 @@ func TestRegisterWithaNilResponseChannel(t *testing.T) {
 
 func TestRegisterCarV1(t *testing.T) {
 	ds := datastore.NewMapDatastore()
+	shardRepo := NewBadgerShardRepo(ds)
 	dagst, err := NewDAGStore(Config{
 		MountRegistry: testRegistry(t),
 		TransientsDir: t.TempDir(),
-		Datastore:     ds,
+		ShardRepo:     shardRepo,
 	})
 	require.NoError(t, err)
 
@@ -255,7 +260,7 @@ func TestRegisterCarV2(t *testing.T) {
 	dagst, err := NewDAGStore(Config{
 		MountRegistry: testRegistry(t),
 		TransientsDir: t.TempDir(),
-		Datastore:     datastore.NewMapDatastore(),
+		ShardRepo:     NewBadgerShardRepo(datastore.NewMapDatastore()),
 	})
 	require.NoError(t, err)
 
@@ -307,10 +312,11 @@ func TestRegisterCarV2(t *testing.T) {
 func TestRegisterConcurrentShards(t *testing.T) {
 	run := func(t *testing.T, n int) {
 		store := dssync.MutexWrap(datastore.NewMapDatastore())
+		shardRepo := NewBadgerShardRepo(store)
 		dagst, err := NewDAGStore(Config{
 			MountRegistry: testRegistry(t),
 			TransientsDir: t.TempDir(),
-			Datastore:     store,
+			ShardRepo:     shardRepo,
 		})
 		require.NoError(t, err)
 
@@ -332,7 +338,7 @@ func TestAcquireInexistentShard(t *testing.T) {
 	dagst, err := NewDAGStore(Config{
 		MountRegistry: testRegistry(t),
 		TransientsDir: t.TempDir(),
-		Datastore:     datastore.NewMapDatastore(),
+		ShardRepo:     NewBadgerShardRepo(datastore.NewMapDatastore()),
 	})
 	require.NoError(t, err)
 
@@ -349,7 +355,7 @@ func TestAcquireAfterRegisterWait(t *testing.T) {
 	dagst, err := NewDAGStore(Config{
 		MountRegistry: testRegistry(t),
 		TransientsDir: t.TempDir(),
-		Datastore:     datastore.NewMapDatastore(),
+		ShardRepo:     NewBadgerShardRepo(datastore.NewMapDatastore()),
 	})
 	require.NoError(t, err)
 
@@ -420,12 +426,13 @@ func TestConcurrentAcquires(t *testing.T) {
 func TestRestartRestoresState(t *testing.T) {
 	dir := t.TempDir()
 	store := datastore.NewLogDatastore(dssync.MutexWrap(datastore.NewMapDatastore()), "trace")
+	shardRepo := NewBadgerShardRepo(store)
 	idx, err := index.NewFSRepo(t.TempDir())
 	require.NoError(t, err)
 	dagst, err := NewDAGStore(Config{
 		MountRegistry: testRegistry(t),
 		TransientsDir: dir,
-		Datastore:     store,
+		ShardRepo:     shardRepo,
 		IndexRepo:     idx,
 	})
 	require.NoError(t, err)
@@ -452,7 +459,7 @@ func TestRestartRestoresState(t *testing.T) {
 	dagst, err = NewDAGStore(Config{
 		MountRegistry: testRegistry(t),
 		TransientsDir: dir,
-		Datastore:     store,
+		ShardRepo:     shardRepo,
 		IndexRepo:     idx,
 	})
 	require.NoError(t, err)
@@ -486,6 +493,7 @@ func TestRestartRestoresState(t *testing.T) {
 func TestRestartResumesRegistration(t *testing.T) {
 	dir := t.TempDir()
 	store := datastore.NewLogDatastore(dssync.MutexWrap(datastore.NewMapDatastore()), "trace")
+	shardRepo := NewBadgerShardRepo(store)
 	r := testRegistry(t)
 
 	err := r.Register("block", newBlockingMount(&mount.FSMount{FS: testdata.FS}))
@@ -495,7 +503,7 @@ func TestRestartResumesRegistration(t *testing.T) {
 	dagst, err := NewDAGStore(Config{
 		MountRegistry: r,
 		TransientsDir: dir,
-		Datastore:     store,
+		ShardRepo:     shardRepo,
 		TraceCh:       sink,
 	})
 	require.NoError(t, err)
@@ -551,7 +559,7 @@ func TestRestartResumesRegistration(t *testing.T) {
 	dagst, err = NewDAGStore(Config{
 		MountRegistry: r,
 		TransientsDir: dir,
-		Datastore:     store,
+		ShardRepo:     shardRepo,
 		TraceCh:       sink,
 	})
 	require.NoError(t, err)
@@ -681,11 +689,12 @@ func TestOrphansRemovedOnStartup(t *testing.T) {
 func TestLazyInitialization(t *testing.T) {
 	dir := t.TempDir()
 	store := datastore.NewLogDatastore(dssync.MutexWrap(datastore.NewMapDatastore()), "trace")
+	shardRepo := NewBadgerShardRepo(store)
 	sink := tracer(128)
 	dagst, err := NewDAGStore(Config{
 		MountRegistry: testRegistry(t),
 		TransientsDir: dir,
-		Datastore:     store,
+		ShardRepo:     shardRepo,
 		TraceCh:       sink,
 	})
 	require.NoError(t, err)
@@ -1056,6 +1065,7 @@ func TestFailureRecovery(t *testing.T) {
 func TestRecoveryOnStart(t *testing.T) {
 	// populate a few failing shards.
 	ds := datastore.NewMapDatastore()
+	shardRepo := NewBadgerShardRepo(ds)
 	r := testRegistry(t)
 	dir := t.TempDir()
 	sink := tracer(128)
@@ -1065,7 +1075,7 @@ func TestRecoveryOnStart(t *testing.T) {
 		TransientsDir: dir,
 		TraceCh:       sink,
 		FailureCh:     failures,
-		Datastore:     ds,
+		ShardRepo:     shardRepo,
 	}
 	dagst, err := NewDAGStore(config)
 	require.NoError(t, err)
@@ -1287,13 +1297,14 @@ func TestFailingAcquireErrorPropagates(t *testing.T) {
 
 func TestTransientReusedOnRestart(t *testing.T) {
 	ds := datastore.NewMapDatastore()
+	shardRepo := NewBadgerShardRepo(ds)
 	dir := t.TempDir()
 	r := testRegistry(t)
 	idx := index.NewMemoryRepo()
 	dagst, err := NewDAGStore(Config{
 		MountRegistry: r,
 		TransientsDir: dir,
-		Datastore:     ds,
+		ShardRepo:     shardRepo,
 		IndexRepo:     idx,
 	})
 	require.NoError(t, err)
@@ -1317,7 +1328,7 @@ func TestTransientReusedOnRestart(t *testing.T) {
 	dagst, err = NewDAGStore(Config{
 		MountRegistry: r,
 		TransientsDir: dir,
-		Datastore:     ds,
+		ShardRepo:     shardRepo,
 		IndexRepo:     idx,
 	})
 	require.NoError(t, err)
@@ -1344,13 +1355,14 @@ func TestTransientReusedOnRestart(t *testing.T) {
 
 func TestAcquireFailsWhenIndexGone(t *testing.T) {
 	ds := datastore.NewMapDatastore()
+	shardRepo := NewBadgerShardRepo(ds)
 	dir := t.TempDir()
 	r := testRegistry(t)
 	idx := index.NewMemoryRepo()
 	dagst, err := NewDAGStore(Config{
 		MountRegistry: r,
 		TransientsDir: dir,
-		Datastore:     ds,
+		ShardRepo:     shardRepo,
 		IndexRepo:     idx,
 	})
 	require.NoError(t, err)
