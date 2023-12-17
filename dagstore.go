@@ -331,15 +331,31 @@ func (d *DAGStore) Start(ctx context.Context) error {
 		go d.dispatcher(d.dispatchFailuresCh)
 	}
 
-	// release the queued registrations before we return.
-	for _, s := range toRegister {
-		_ = d.queueTask(&task{op: OpShardRegister, shard: s, waiter: &waiter{ctx: ctx}}, d.externalCh)
-	}
+	go func() {
+		// 防止需要生成的索引太多，导致启动较慢，需要限制并发数，留一半给外部调用
+		// externalCh 的 buffer 是 128
+		th := throttle.Fixed(64)
 
-	// queue shard recovery for shards in the errored state before we return.
-	for _, s := range toRecover {
-		_ = d.queueTask(&task{op: OpShardRecover, shard: s, waiter: &waiter{ctx: ctx}}, d.externalCh)
-	}
+		do := func(op OpType, s *Shard) error {
+			return th.Do(ctx, func(ctx context.Context) error {
+				out := make(chan ShardResult, 1)
+				if err := d.queueTask(&task{op: op, shard: s, waiter: &waiter{ctx: ctx, outCh: out}}, d.externalCh); err != nil {
+					return err
+				}
+				<-out
+				return nil
+			})
+		}
+
+		// release the queued registrations before we return.
+		for idx := range toRegister {
+			_ = do(OpShardRegister, toRegister[idx])
+		}
+		// queue shard recovery for shards in the errored state before we return.
+		for idx := range toRecover {
+			_ = do(OpShardRecover, toRecover[idx])
+		}
+	}()
 
 	return nil
 }
