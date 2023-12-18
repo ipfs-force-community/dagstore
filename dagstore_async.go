@@ -104,6 +104,9 @@ func (d *DAGStore) acquireAsync(ctx context.Context, w *waiter, s *Shard, mnt mo
 // initializeShard initializes a shard asynchronously by fetching its data and
 // performing indexing.
 func (d *DAGStore) initializeShard(ctx context.Context, s *Shard, mnt mount.Mount) {
+	d.initializeLimiter <- struct{}{}
+	defer func() { <-d.initializeLimiter }()
+
 	reader, err := mnt.Fetch(ctx)
 	if err != nil {
 		log.Warnw("initialize: failed to fetch from mount upgrader", "shard", s.key, "error", err)

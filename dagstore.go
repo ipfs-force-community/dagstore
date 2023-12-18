@@ -110,6 +110,10 @@ type DAGStore struct {
 	throttleReaadyFetch throttle.Throttler
 	throttleIndex       throttle.Throttler
 
+	//Concurrency control
+	//
+	initializeLimiter chan struct{}
+
 	// Lifecycle.
 	//
 	ctx      context.Context
@@ -251,6 +255,8 @@ func NewDAGStore(cfg Config) (*DAGStore, error) {
 		throttleReaadyFetch: throttle.Noop(),
 		ctx:                 ctx,
 		cancelFn:            cancel,
+
+		initializeLimiter: make(chan struct{}, 256),
 	}
 
 	if max := cfg.MaxConcurrentIndex; max > 0 {
