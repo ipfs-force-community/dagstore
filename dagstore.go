@@ -574,7 +574,16 @@ func (d *DAGStore) queueTask(tsk *task, ch chan<- *task) error {
 	select {
 	case <-d.ctx.Done():
 		return fmt.Errorf("dag store closed")
-	case ch <- tsk:
+	default:
+		if len(d.externalCh) >= cap(d.externalCh)-10 && (tsk.op == OpShardRegister || tsk.op == OpShardRecover ||
+			tsk.op == OpShardAcquire) {
+			log.Infof("reducing external channel capacity", "len", len(d.externalCh), "cap", cap(d.externalCh))
+			go func() {
+				d.dispatchResult(&ShardResult{Key: tsk.shard.key, Error: ErrReduceCapacity}, tsk.waiter)
+			}()
+			return nil
+		}
+		ch <- tsk
 		return nil
 	}
 }

@@ -53,9 +53,6 @@ func (d *DAGStore) control() {
 			}
 			return
 		}
-		if tsk == nil {
-			continue
-		}
 
 		if gc != nil {
 			// this was a GC request.
@@ -358,14 +355,6 @@ func (d *DAGStore) consumeNext() (tsk *task, gc chan *GCResult, error error) {
 
 	select {
 	case tsk = <-d.externalCh:
-		if len(d.externalCh) > cap(d.externalCh)-10 && (tsk.op == OpShardRegister || tsk.op == OpShardRecover ||
-			tsk.op == OpShardAcquire) {
-			log.Infof("reducing external channel capacity", "len", len(d.externalCh), "cap", cap(d.externalCh))
-			go func() {
-				d.dispatchResult(&ShardResult{Key: tsk.shard.key, Error: ErrReduceCapacity}, tsk.waiter)
-			}()
-			return nil, nil, nil
-		}
 		return tsk, nil, nil
 	case tsk = <-d.completionCh:
 		return tsk, nil, nil
