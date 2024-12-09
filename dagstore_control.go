@@ -30,6 +30,8 @@ func (o OpType) String() string {
 		"OpShardRecover"}[o]
 }
 
+var ErrReduceCapacity = fmt.Errorf("reducing external channel capacity")
+
 // control runs the DAG store's event loop.
 func (d *DAGStore) control() {
 	defer d.wg.Done()
@@ -50,6 +52,9 @@ func (d *DAGStore) control() {
 				log.Errorw("consuming next task failed; aborted event loop; dagstore unoperational", "error", err)
 			}
 			return
+		}
+		if tsk == nil {
+			continue
 		}
 
 		if gc != nil {
@@ -353,6 +358,14 @@ func (d *DAGStore) consumeNext() (tsk *task, gc chan *GCResult, error error) {
 
 	select {
 	case tsk = <-d.externalCh:
+		if len(d.externalCh) > cap(d.externalCh)-10 && (tsk.op == OpShardRegister || tsk.op == OpShardRecover ||
+			tsk.op == OpShardAcquire) {
+			log.Infof("reducing external channel capacity", "len", len(d.externalCh), "cap", cap(d.externalCh))
+			go func() {
+				d.dispatchResult(&ShardResult{Key: tsk.shard.key, Error: ErrReduceCapacity}, tsk.waiter)
+			}()
+			return nil, nil, nil
+		}
 		return tsk, nil, nil
 	case tsk = <-d.completionCh:
 		return tsk, nil, nil
